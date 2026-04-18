@@ -1,29 +1,36 @@
 package com.forecast;
 
 import com.forecast.controllers.ForecastController;
+import com.forecast.integration.db.DemandForecastingDbAdapter;
+import com.forecast.integration.db.ForecastPersistenceService;
 import com.forecast.models.FeatureTimeSeries;
 import com.forecast.models.ForecastResult;
 import com.forecast.models.LifecycleContent;
+import com.forecast.models.exceptions.MLAlgorithmicExceptionSource;
 import com.forecast.services.engine.ForecastProcessor;
-import com.forecast.services.engine.MLAlgorithmicExceptionSource;
 import com.forecast.services.engine.lifecycle.LifeCycleManager;
 import com.forecast.services.output.ForecastOutputService;
+import com.jackfruit.scm.database.facade.SupplyChainDatabaseFacade;
 import com.scm.exceptions.SCMExceptionEvent;
 import com.scm.exceptions.SCMExceptionHandler;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 public class TestForecastRunner {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+
         String productId = "P1001";
         String storeId = "S001";
 
-        FeatureTimeSeries features = buildSampleFeatureSeries(productId, storeId);
+        FeatureTimeSeries features = loadFromDatabase(productId, storeId);
 
         LifeCycleManager lifeCycleManager = new LifeCycleManager();
 
@@ -31,76 +38,82 @@ public class TestForecastRunner {
             @Override
             public void handle(SCMExceptionEvent event) {
                 System.out.println("===== SCM EXCEPTION EVENT =====");
-                System.out.println("Event received from shared exception subsystem.");
                 System.out.println(event);
                 System.out.println("================================");
             }
         };
 
         MLAlgorithmicExceptionSource exceptionSource =
-            new MLAlgorithmicExceptionSource(scmExceptionHandler);
+                new MLAlgorithmicExceptionSource(scmExceptionHandler);
+
+        SupplyChainDatabaseFacade facade = new SupplyChainDatabaseFacade();
+        DemandForecastingDbAdapter dbAdapter =
+                new DemandForecastingDbAdapter(facade);
+        ForecastPersistenceService persistenceService =
+                new ForecastPersistenceService(dbAdapter);
 
         ForecastOutputService outputService =
-            new ForecastOutputService(exceptionSource);
+                new ForecastOutputService(exceptionSource, persistenceService);
 
         ForecastProcessor processor =
-            new ForecastProcessor(lifeCycleManager, outputService, exceptionSource);
+                new ForecastProcessor(lifeCycleManager, outputService, exceptionSource);
 
         ForecastController controller =
-            new ForecastController(processor);
+                new ForecastController(processor);
 
         LifecycleContent lifecycle = null;
 
         ForecastResult result = controller.generateForecast(
-            productId,
-            storeId,
-            features,
-            lifecycle
+                productId,
+                storeId,
+                features,
+                lifecycle
         );
 
         printResult(result);
     }
 
-    private static FeatureTimeSeries buildSampleFeatureSeries(String productId, String storeId) {
+    private static FeatureTimeSeries loadFromDatabase(String productId, String storeId) throws Exception {
+
+        Connection conn = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/demandforecastinglocal",
+                "root",
+                "anurag10"
+        );
+
+        String query =
+                "SELECT sale_date, quantity_sold " +
+                "FROM sales_records " +
+                "WHERE product_id = ? AND store_id = ? " +
+                "ORDER BY sale_date";
+
+        PreparedStatement stmt = conn.prepareStatement(query);
+        stmt.setString(1, productId);
+        stmt.setString(2, storeId);
+
+        ResultSet rs = stmt.executeQuery();
+
         List<LocalDate> dates = new ArrayList<>();
-        List<BigDecimal> demandValues = new ArrayList<>();
-        List<BigDecimal> seasonalComponent = new ArrayList<>();
+        List<BigDecimal> values = new ArrayList<>();
 
-        LocalDate start = LocalDate.now().minusMonths(24);
-
-        for (int i = 0; i < 24; i++) {
-            dates.add(start.plusMonths(i));
-
-            double base = 100 + (i * 3);
-            double seasonalBoost;
-
-            switch (i % 4) {
-                case 0:
-                    seasonalBoost = 0.95;
-                    break;
-                case 1:
-                    seasonalBoost = 1.05;
-                    break;
-                case 2:
-                    seasonalBoost = 1.15;
-                    break;
-                default:
-                    seasonalBoost = 0.90;
-                    break;
-            }
-
-            double demand = base * seasonalBoost;
-            demandValues.add(BigDecimal.valueOf(demand).setScale(2, RoundingMode.HALF_UP));
+        while (rs.next()) {
+            dates.add(rs.getDate("sale_date").toLocalDate());
+            values.add(BigDecimal.valueOf(rs.getInt("quantity_sold")));
         }
 
-        seasonalComponent.add(new BigDecimal("0.95"));
-        seasonalComponent.add(new BigDecimal("1.05"));
-        seasonalComponent.add(new BigDecimal("1.15"));
-        seasonalComponent.add(new BigDecimal("0.90"));
+        rs.close();
+        stmt.close();
+        conn.close();
 
-        FeatureTimeSeries features = new FeatureTimeSeries(productId, storeId, dates, demandValues);
-        features.setSeasonalComponent(seasonalComponent);
-        features.setFeatureEngineeringVersion("v1.0");
+        if (dates.isEmpty()) {
+            throw new RuntimeException(
+                    "No sales data found for product=" + productId + ", store=" + storeId
+            );
+        }
+
+        FeatureTimeSeries features =
+                new FeatureTimeSeries(productId, storeId, dates, values);
+
         features.setNormalized(false);
 
         return features;
@@ -128,20 +141,20 @@ public class TestForecastRunner {
         if (result.getForecastedDemand() != null) {
             for (int i = 0; i < result.getForecastedDemand().size(); i++) {
                 String lower = result.getConfidenceIntervalLower() != null
-                    && i < result.getConfidenceIntervalLower().size()
-                    ? result.getConfidenceIntervalLower().get(i).toString()
-                    : "-";
+                        && i < result.getConfidenceIntervalLower().size()
+                        ? result.getConfidenceIntervalLower().get(i).toString()
+                        : "-";
 
                 String upper = result.getConfidenceIntervalUpper() != null
-                    && i < result.getConfidenceIntervalUpper().size()
-                    ? result.getConfidenceIntervalUpper().get(i).toString()
-                    : "-";
+                        && i < result.getConfidenceIntervalUpper().size()
+                        ? result.getConfidenceIntervalUpper().get(i).toString()
+                        : "-";
 
                 System.out.println(
-                    "Month " + (i + 1) +
-                    " -> Forecast=" + result.getForecastedDemand().get(i) +
-                    ", Lower=" + lower +
-                    ", Upper=" + upper
+                        "Month " + (i + 1) +
+                        " -> Forecast=" + result.getForecastedDemand().get(i) +
+                        ", Lower=" + lower +
+                        ", Upper=" + upper
                 );
             }
         }

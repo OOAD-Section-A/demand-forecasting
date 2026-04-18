@@ -1,9 +1,11 @@
 package com.forecast.services.output;
 
+import com.forecast.integration.db.ForecastPersistenceService;
 import com.forecast.models.ForecastResult;
 import com.forecast.models.exceptions.ErrorCode;
 import com.forecast.models.exceptions.ForecastingException;
 import com.forecast.models.exceptions.IMLAlgorithmicExceptionSource;
+
 import java.util.Objects;
 import java.util.logging.Logger;
 
@@ -18,19 +20,27 @@ public class ForecastOutputService {
     private static final double ALERT_LIFT_THRESHOLD = 3.0;
 
     private final IMLAlgorithmicExceptionSource exceptionSource;
+    private final ForecastPersistenceService persistenceService;
 
     public ForecastOutputService(
-        IMLAlgorithmicExceptionSource exceptionSource
+        IMLAlgorithmicExceptionSource exceptionSource,
+        ForecastPersistenceService persistenceService
     ) {
         this.exceptionSource = Objects.requireNonNull(
             exceptionSource,
             "exceptionSource must not be null"
         );
+        this.persistenceService = Objects.requireNonNull(
+            persistenceService,
+            "persistenceService must not be null"
+        );
+
         LOG.info("ForecastOutputService initialised.");
     }
 
     public void publishForecast(ForecastResult result) {
         Objects.requireNonNull(result, "ForecastResult must not be null");
+
         LOG.info(
             "Publishing forecast for product=[" +
                 result.getProductId() +
@@ -44,8 +54,10 @@ public class ForecastOutputService {
         checkForAlerts(result);
 
         try {
+            persistenceService.saveForecastResult(result);
+
             LOG.info(
-                "Forecast result persisted (DB write stub) for product=" +
+                "Forecast result persisted to database for product=" +
                     result.getProductId()
             );
         } catch (RuntimeException ex) {
@@ -65,11 +77,13 @@ public class ForecastOutputService {
     public void publishDegradedForecast(ForecastResult result) {
         Objects.requireNonNull(result, "ForecastResult must not be null");
         result.setStatus("DEGRADED");
+
         LOG.warning(
             "Publishing DEGRADED forecast for product=[" +
                 result.getProductId() +
                 "]"
         );
+
         publishForecast(result);
     }
 
@@ -81,6 +95,7 @@ public class ForecastOutputService {
             LOG.warning(
                 "Cannot generate replenishment signal — no forecasted demand values."
             );
+
             exceptionSource.fireMissingInputData(
                 457,
                 "ForecastOutputService",

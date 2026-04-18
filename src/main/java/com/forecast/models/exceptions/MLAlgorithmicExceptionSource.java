@@ -1,4 +1,4 @@
-package com.forecast.services.engine;
+package com.forecast.models.exceptions;
 
 import com.forecast.models.exceptions.IMLAlgorithmicExceptionSource;
 import com.scm.exceptions.SCMExceptionEvent;
