@@ -11,8 +11,7 @@ import com.forecast.services.engine.ForecastProcessor;
 import com.forecast.services.engine.lifecycle.LifeCycleManager;
 import com.forecast.services.output.ForecastOutputService;
 import com.jackfruit.scm.database.facade.SupplyChainDatabaseFacade;
-import com.scm.exceptions.SCMExceptionEvent;
-import com.scm.exceptions.SCMExceptionHandler;
+
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -34,17 +33,8 @@ public class TestForecastRunner {
 
         LifeCycleManager lifeCycleManager = new LifeCycleManager();
 
-        SCMExceptionHandler scmExceptionHandler = new SCMExceptionHandler() {
-            @Override
-            public void handle(SCMExceptionEvent event) {
-                System.out.println("===== SCM EXCEPTION EVENT =====");
-                System.out.println(event);
-                System.out.println("================================");
-            }
-        };
-
         MLAlgorithmicExceptionSource exceptionSource =
-                new MLAlgorithmicExceptionSource(scmExceptionHandler);
+                new MLAlgorithmicExceptionSource();
 
         SupplyChainDatabaseFacade facade = new SupplyChainDatabaseFacade();
         DemandForecastingDbAdapter dbAdapter =
@@ -76,7 +66,7 @@ public class TestForecastRunner {
     private static FeatureTimeSeries loadFromDatabase(String productId, String storeId) throws Exception {
 
         Connection conn = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/demandforecastinglocal",
+                "jdbc:mysql://localhost:3306/OOAD",
                 "root",
                 "anurag10"
         );

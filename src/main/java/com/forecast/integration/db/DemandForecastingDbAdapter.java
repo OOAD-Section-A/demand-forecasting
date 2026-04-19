@@ -1,66 +1,58 @@
 package com.forecast.integration.db;
 
+import com.jackfruit.scm.database.adapter.DemandForecastingAdapter;
 import com.jackfruit.scm.database.facade.SupplyChainDatabaseFacade;
 import com.jackfruit.scm.database.model.DemandForecast;
-import com.jackfruit.scm.database.model.DemandForecastingModels.ForecastPerformanceMetric;
-import com.jackfruit.scm.database.model.DemandForecastingModels.HolidayCalendar;
-import com.jackfruit.scm.database.model.DemandForecastingModels.InventorySupply;
-import com.jackfruit.scm.database.model.DemandForecastingModels.ProductLifecycleStage;
-import com.jackfruit.scm.database.model.DemandForecastingModels.ProductMetadata;
-import com.jackfruit.scm.database.model.DemandForecastingModels.PromotionalCalendar;
-import com.jackfruit.scm.database.model.DemandForecastingModels.SalesRecord;
+import com.jackfruit.scm.database.model.ForecastTimeseries;
+import com.jackfruit.scm.database.model.DemandForecastingModels.*;
 
 import java.util.List;
 
 public class DemandForecastingDbAdapter {
 
-    private final SupplyChainDatabaseFacade facade;
+    private final DemandForecastingAdapter adapter;
 
     public DemandForecastingDbAdapter(SupplyChainDatabaseFacade facade) {
-        this.facade = facade;
+        this.adapter = new DemandForecastingAdapter(facade);
     }
 
     public void createForecast(DemandForecast forecast) {
-        facade.demandForecasting().createForecast(forecast);
-    }
-
-    public List<DemandForecast> getAllForecasts() {
-        return facade.demandForecasting().listForecasts();
+        adapter.createForecast(forecast);
     }
 
     public void createSalesRecord(SalesRecord salesRecord) {
-        facade.demandForecasting().createSalesRecord(salesRecord);
-    }
-
-    public List<SalesRecord> getAllSalesRecords() {
-        return facade.demandForecasting().listSalesRecords();
+        adapter.createSalesRecord(salesRecord);
     }
 
     public void createHolidayCalendar(HolidayCalendar holidayCalendar) {
-        facade.demandForecasting().createHolidayCalendar(holidayCalendar);
+        adapter.createHolidayCalendar(holidayCalendar);
     }
 
     public void createPromotionalCalendar(PromotionalCalendar promotionalCalendar) {
-        facade.demandForecasting().createPromotionalCalendar(promotionalCalendar);
+        adapter.createPromotionalCalendar(promotionalCalendar);
     }
 
     public void createProductMetadata(ProductMetadata productMetadata) {
-        facade.demandForecasting().createProductMetadata(productMetadata);
+        adapter.createProductMetadata(productMetadata);
     }
 
     public void createProductLifecycleStage(ProductLifecycleStage stage) {
-        facade.demandForecasting().createProductLifecycleStage(stage);
+        adapter.createProductLifecycleStage(stage);
     }
 
     public void createInventorySupply(InventorySupply inventorySupply) {
-        facade.demandForecasting().createInventorySupply(inventorySupply);
+        adapter.createInventorySupply(inventorySupply);
     }
 
     public void createForecastPerformanceMetric(ForecastPerformanceMetric metric) {
-        facade.demandForecasting().createForecastPerformanceMetric(metric);
+        adapter.createForecastPerformanceMetric(metric);
     }
 
-    public void close() {
-        facade.close();
+        public void createForecastTimeseries(ForecastTimeseries ts) {
+        adapter.createForecastTimeseries(ts);
+    }
+
+    public void createBatchForecastTimeseries(List<ForecastTimeseries> list) {
+        adapter.createBatchForecastTimeseries(list);
     }
 }

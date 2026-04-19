@@ -1,29 +1,18 @@
 package com.forecast.models.exceptions;
 
-import com.forecast.models.exceptions.IMLAlgorithmicExceptionSource;
-import com.scm.exceptions.SCMExceptionEvent;
-import com.scm.exceptions.SCMExceptionHandler;
-import com.scm.exceptions.Severity;
+import com.scm.subsystems.DemandForecastingSubsystem;
 
-import java.util.Objects;
 import java.util.logging.Logger;
 
-/**
- * Default implementation of IMLAlgorithmicExceptionSource.
- * Bridges forecasting-side alerts to the shared SCM exception handler.
- */
 public class MLAlgorithmicExceptionSource implements IMLAlgorithmicExceptionSource {
 
     private static final Logger LOG =
         Logger.getLogger(MLAlgorithmicExceptionSource.class.getName());
 
-    private final SCMExceptionHandler handler;
+    private final DemandForecastingSubsystem exceptions;
 
-    public MLAlgorithmicExceptionSource(SCMExceptionHandler handler) {
-        this.handler = Objects.requireNonNull(
-            handler,
-            "SCMExceptionHandler must not be null"
-        );
+    public MLAlgorithmicExceptionSource() {
+        this.exceptions = DemandForecastingSubsystem.INSTANCE;
         LOG.info("MLAlgorithmicExceptionSource initialized.");
     }
 
@@ -35,28 +24,19 @@ public class MLAlgorithmicExceptionSource implements IMLAlgorithmicExceptionSour
         double expectedThreshold,
         double actualValue
     ) {
-        String errorMessage =
-            "Forecast model accuracy below threshold for entity [" + entityKey + "]";
-        String detail =
+        LOG.warning(
+            "Model degradation routed to shared handler: " +
             "source=" + source +
             ", entity=" + entityKey +
-            ", expectedThreshold=" + expectedThreshold +
-            ", actualValue=" + actualValue;
-
-        LOG.warning(
-            "ML Model Degradation [ID=" + exceptionId + "] " + detail
+            ", threshold=" + expectedThreshold +
+            ", actual=" + actualValue
         );
 
-        SCMExceptionEvent event = new SCMExceptionEvent(
-            exceptionId,
-            "MODEL_DEGRADATION",
-            Severity.MAJOR,
+        exceptions.onModelAccuracyBelowThreshold(
             source,
-            errorMessage,
-            detail
+            expectedThreshold,
+            actualValue
         );
-
-        handler.handle(event);
     }
 
     @Override
@@ -66,27 +46,27 @@ public class MLAlgorithmicExceptionSource implements IMLAlgorithmicExceptionSour
         String fieldName,
         String context
     ) {
-        String errorMessage =
-            "Missing forecast input data: " + fieldName;
-        String detail =
-            "source=" + source +
-            ", fieldName=" + fieldName +
-            ", context=" + context;
-
         LOG.warning(
-            "Missing Input Data [ID=" + exceptionId + "] " + detail
+            "Missing input data routed to shared handler: " +
+            "source=" + source +
+            ", field=" + fieldName +
+            ", context=" + context
         );
 
-        SCMExceptionEvent event = new SCMExceptionEvent(
-            exceptionId,
-            "MISSING_INPUT_DATA",
-            Severity.WARNING,
-            source,
-            errorMessage,
-            detail
-        );
-
-        handler.handle(event);
+        if ("ForecastedDemandValues".equals(fieldName)) {
+            exceptions.onReplenishmentSignalNotGenerated(context);
+        } else if ("promotional_data".equalsIgnoreCase(fieldName)) {
+            exceptions.onMissingPromotionalData(context);
+        } else if ("holiday_data".equalsIgnoreCase(fieldName)) {
+            exceptions.onHolidayDataStale(context);
+        } else {
+            LOG.warning(
+                "No public shared exception method available for field=" +
+                fieldName +
+                ", context=" +
+                context
+            );
+        }
     }
 
     @Override
@@ -96,25 +76,33 @@ public class MLAlgorithmicExceptionSource implements IMLAlgorithmicExceptionSour
         String entityKey,
         String detail
     ) {
-        String errorMessage =
-            "Forecast algorithmic alert for entity [" + entityKey + "]";
-
         LOG.warning(
-            "Algorithmic Alert [ID=" + exceptionId + "] " +
+            "Algorithmic alert routed to shared handler: " +
             "source=" + source +
             ", entity=" + entityKey +
             ", detail=" + detail
         );
 
-        SCMExceptionEvent event = new SCMExceptionEvent(
-            exceptionId,
-            "ALGORITHMIC_ALERT",
-            Severity.MINOR,
-            source,
-            errorMessage,
-            detail
-        );
+        try {
+            double outlierValue = extractNumericValue(detail);
+            exceptions.onOutlierDetected(entityKey, outlierValue);
+        } catch (Exception e) {
+            LOG.warning(
+                "Could not map algorithmic alert to a public shared exception method. " +
+                "entity=" + entityKey +
+                ", detail=" + detail
+            );
+        }
+    }
 
-        handler.handle(event);
+    private double extractNumericValue(String detail) {
+        String cleaned = detail.replaceAll("[^0-9.\\-]", " ").trim();
+        String[] parts = cleaned.split("\\s+");
+        for (String p : parts) {
+            if (!p.isEmpty()) {
+                return Double.parseDouble(p);
+            }
+        }
+        throw new IllegalArgumentException("No numeric value found in detail");
     }
 }

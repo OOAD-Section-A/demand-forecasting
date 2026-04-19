@@ -6,9 +6,7 @@ com\forecast\services\engine\strategy\ForecastStrategy.class
 com\forecast\models\RawSalesData$Builder.class
 com\forecast\models\exceptions\ErrorCode.class
 com\forecast\models\PatternProfile.class
-com\forecast\TestForecastRunner$1.class
 com\forecast\services\ingestion\connector\RetryPolicy$Builder.class
-com\forecast\integration\db\DatabaseSmokeTest.class
 com\forecast\models\ForecastResult.class
 com\forecast\services\ingestion\validation\SalesDataValidationService.class
 com\forecast\models\exceptions\ForecastingException.class
