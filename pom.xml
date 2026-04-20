@@ -13,7 +13,8 @@
     <packaging>jar</packaging>
 
     <name>Demand Forecasting Project</name>
-    <description>A demand forecasting system with data ingestion and analysis capabilities</description>
+    <description
+    >A demand forecasting system with data ingestion and analysis capabilities</description>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
@@ -22,23 +23,55 @@
     </properties>
 
     <dependencies>
-    <dependency>
+        <!-- SCM Exception Handler -->
+        <dependency>
             <groupId>com.scm</groupId>
             <artifactId>scm-exception-handler</artifactId>
             <version>3.0</version>
             <scope>system</scope>
-            <systemPath>${project.basedir}/lib/scm-exception-handler-v3.jar</systemPath>
+            <systemPath
+            >${project.basedir}/lib/scm-exception-handler-v3.jar</systemPath>
         </dependency>
-    
+
         <!-- Database module jar -->
         <dependency>
             <groupId>com.jackfruit.scm</groupId>
             <artifactId>database-module</artifactId>
             <version>1.0.0-SNAPSHOT</version>
             <scope>system</scope>
-            <systemPath>${project.basedir}/lib/database-module-1.0.0-SNAPSHOT-standalone.jar</systemPath>
+            <systemPath
+            >${project.basedir}/lib/database-module-1.0.0-SNAPSHOT-standalone.jar</systemPath>
         </dependency>
 
+        <!-- Warehouse Management System JAR Files -->
+        <dependency>
+            <groupId>com.wms</groupId>
+            <artifactId>wms-database-module</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+            <scope>system</scope>
+            <systemPath
+            >${project.basedir}/lib/wms-database-module-1.0.0-SNAPSHOT-standalone.jar</systemPath>
+        </dependency>
+
+        <dependency>
+            <groupId>com.wms</groupId>
+            <artifactId>wms-scm-exception-handler</artifactId>
+            <version>3.0</version>
+            <scope>system</scope>
+            <systemPath
+            >${project.basedir}/lib/wms-scm-exception-handler-v3.jar</systemPath>
+        </dependency>
+
+        <dependency>
+            <groupId>com.wms</groupId>
+            <artifactId>wms-scm-exception-viewer-gui</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath
+            >${project.basedir}/lib/wms-scm-exception-viewer-gui.jar</systemPath>
+        </dependency>
+
+        <!-- SLF4J Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -51,6 +84,7 @@
             <version>2.0.7</version>
         </dependency>
 
+        <!-- JUnit Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -70,14 +104,15 @@
                     <target>11</target>
                 </configuration>
             </plugin>
-            
+
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <configuration>
                     <mainClass>com.forecast.TestForecastRunner</mainClass>
-                    <includeProjectDependencies>true</includeProjectDependencies>
+                    <includeProjectDependencies
+                    >true</includeProjectDependencies>
                     <includePluginDependencies>true</includePluginDependencies>
                     <classpathScope>compile</classpathScope>
                 </configuration>
