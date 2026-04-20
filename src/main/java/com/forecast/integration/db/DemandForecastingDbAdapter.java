@@ -10,9 +10,11 @@ import java.util.List;
 
 public class DemandForecastingDbAdapter {
 
+    private final SupplyChainDatabaseFacade facade;
     private final DemandForecastingAdapter adapter;
 
     public DemandForecastingDbAdapter(SupplyChainDatabaseFacade facade) {
+        this.facade = facade;
         this.adapter = new DemandForecastingAdapter(facade);
     }
 
@@ -48,11 +50,15 @@ public class DemandForecastingDbAdapter {
         adapter.createForecastPerformanceMetric(metric);
     }
 
-        public void createForecastTimeseries(ForecastTimeseries ts) {
+    public void createForecastTimeseries(ForecastTimeseries ts) {
         adapter.createForecastTimeseries(ts);
     }
 
     public void createBatchForecastTimeseries(List<ForecastTimeseries> list) {
         adapter.createBatchForecastTimeseries(list);
+    }
+
+    public List<SalesRecord> listSalesRecords() {
+        return facade.demandForecasting().listSalesRecords();
     }
 }

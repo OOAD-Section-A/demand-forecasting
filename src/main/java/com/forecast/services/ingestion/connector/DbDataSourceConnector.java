@@ -1,11 +1,10 @@
 package com.forecast.services.ingestion.connector;
 
+import com.forecast.integration.db.DemandForecastingDbAdapter;
 import com.forecast.models.RawSalesData;
-import com.forecast.models.exceptions.ErrorCode;
-import com.forecast.models.exceptions.ForecastingException;
-import java.math.BigDecimal;
-import java.sql.*;
-import java.time.LocalDate;
+import com.jackfruit.scm.database.facade.SupplyChainDatabaseFacade;
+import com.jackfruit.scm.database.model.DemandForecastingModels.SalesRecord;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,32 +14,9 @@ import java.util.logging.Logger;
 /**
  * Database-backed DataSourceConnector.
  *
- * Uses JDBC directly. In production you would swap the single
- * DriverManager.getConnection() call for a HikariCP / c3p0 pool
- * checkout — the pool size and timeout fields are already wired up
- * in the parent Builder for that integration.
- *
- * Construction (Builder pattern):
- *
- *   IDataConnector conn = new DbDataSourceConnector.Builder()
- *       .jdbcUrl("jdbc:postgresql://db-host:5432/forecast_db")
- *       .credentials("forecast_user", "s3cret")
- *       .schema("public")
- *       .salesTable("sales_records")
- *       .retryPolicy(new RetryPolicy.Builder()
- *           .maxAttempts(3)
- *           .initialDelayMs(500)
- *           .maxDelayMs(8_000)
- *           .build())
- *       .connectionPoolSize(10)
- *       .connectionTimeoutMs(5_000)
- *       .socketTimeoutMs(30_000)
- *       .sourceName("forecast-db-prod")
- *       .build();
- *
- *   conn.connect();
- *   List<RawSalesData> rows = conn.fetchSalesData();
- *   conn.disconnect();
+ * Uses the shared database module instead of direct JDBC. The database module
+ * reads runtime connection settings from JVM system properties, environment
+ * variables, or database.properties.
  */
 public final class DbDataSourceConnector extends DataSourceConnector {
 
@@ -48,151 +24,101 @@ public final class DbDataSourceConnector extends DataSourceConnector {
         DbDataSourceConnector.class.getName()
     );
 
-    private static final String FETCH_SQL =
-        "SELECT sale_id, product_id, store_id, sale_date, " +
-        "       quantity_sold, unit_price, revenue, region " +
-        "FROM   %s.%s " +
-        "ORDER  BY sale_date";
-
-    // ── DB-specific config ──────────────────────────────────────────
-    private final String jdbcUrl;
-    private final String username;
-    private final String password;
-    private final String schema;
-    private final String salesTable;
-
-    // ── Runtime state ───────────────────────────────────────────────
-    private Connection activeConnection;
+    private SupplyChainDatabaseFacade facade;
+    private DemandForecastingDbAdapter adapter;
 
     private DbDataSourceConnector(Builder b) {
         super(b);
-        this.jdbcUrl = b.jdbcUrl;
-        this.username = b.username;
-        this.password = b.password;
-        this.schema = b.schema;
-        this.salesTable = b.salesTable;
     }
 
-    // ── Hook implementations ────────────────────────────────────────
-
     @Override
-    protected void openConnection() throws Exception {
-        // In production: replace with pool.getConnection()
-        activeConnection = DriverManager.getConnection(
-            jdbcUrl,
-            username,
-            password
-        );
-        activeConnection.setNetworkTimeout(null, (int) socketTimeoutMs);
-        activeConnection.setAutoCommit(false);
-        LOG.fine("JDBC connection opened to " + jdbcUrl);
+    protected void openConnection() {
+        facade = new SupplyChainDatabaseFacade();
+        adapter = new DemandForecastingDbAdapter(facade);
+        LOG.fine("Database module facade opened for demand forecasting ingestion.");
     }
 
     @Override
     protected List<RawSalesData> doFetchSalesData() {
-        String sql = String.format(FETCH_SQL, schema, salesTable);
         List<RawSalesData> results = new ArrayList<>();
 
-        try (
-            PreparedStatement ps = activeConnection.prepareStatement(sql);
-            ResultSet rs = ps.executeQuery()
-        ) {
-            while (rs.next()) {
-                results.add(mapRow(rs));
-            }
-        } catch (SQLException ex) {
-            throw new ForecastingException(
-                ErrorCode.DATA_SOURCE_UNAVAILABLE,
-                "SQL fetch failed on " + schema + "." + salesTable,
-                ex
-            );
+        for (SalesRecord record : adapter.listSalesRecords()) {
+            results.add(mapRecord(record));
         }
 
-        LOG.info(
-            "Fetched " +
-                results.size() +
-                " rows from " +
-                schema +
-                "." +
-                salesTable
-        );
+        LOG.info("Fetched " + results.size() + " sales rows from database module.");
         return Collections.unmodifiableList(results);
     }
 
     @Override
-    protected void closeConnection() throws Exception {
-        if (activeConnection != null && !activeConnection.isClosed()) {
-            activeConnection.close();
+    protected void closeConnection() {
+        if (facade != null) {
+            facade.close();
         }
     }
 
-    // ── Row mapping ─────────────────────────────────────────────────
-
-    private RawSalesData mapRow(ResultSet rs) throws SQLException {
+    private RawSalesData mapRecord(SalesRecord record) {
         return new RawSalesData.Builder()
-            .saleId(rs.getLong("sale_id"))
-            .productId(rs.getString("product_id"))
-            .storeId(rs.getString("store_id"))
-            .saleDate(rs.getDate("sale_date").toLocalDate())
-            .quantitySold(rs.getInt("quantity_sold"))
-            .unitPrice(rs.getBigDecimal("unit_price"))
-            .revenue(rs.getBigDecimal("revenue"))
-            .region(rs.getString("region"))
+            .saleId(toLongId(record.saleId()))
+            .productId(record.productId())
+            .storeId(record.storeId())
+            .saleDate(record.saleDate())
+            .quantitySold(record.quantitySold())
+            .unitPrice(record.unitPrice())
+            .revenue(record.revenue())
+            .region(record.region())
             .build();
     }
 
-    // ── Builder ─────────────────────────────────────────────────────
+    private long toLongId(String saleId) {
+        if (saleId == null || saleId.isBlank()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(saleId);
+        } catch (NumberFormatException ex) {
+            return Math.abs((long) saleId.hashCode());
+        }
+    }
 
     public static final class Builder extends AbstractBuilder<Builder> {
 
-        private String jdbcUrl;
-        private String username = "";
-        private String password = "";
-        private String schema = "public";
-        private String salesTable = "sales_records";
-
+        /**
+         * Kept for source compatibility. The database module reads db.url from
+         * JVM system properties, environment variables, or database.properties.
+         */
         public Builder jdbcUrl(String val) {
-            this.jdbcUrl = Objects.requireNonNull(
-                val,
-                "jdbcUrl must not be null"
-            );
+            Objects.requireNonNull(val, "jdbcUrl must not be null");
             return this;
         }
 
+        /**
+         * Kept for source compatibility. Use -Ddb.username and -Ddb.password at runtime.
+         */
         public Builder credentials(String username, String password) {
-            this.username = Objects.requireNonNull(
-                username,
-                "username must not be null"
-            );
-            this.password = Objects.requireNonNull(
-                password,
-                "password must not be null"
-            );
+            Objects.requireNonNull(username, "username must not be null");
+            Objects.requireNonNull(password, "password must not be null");
             return this;
         }
 
+        /**
+         * Kept for source compatibility. Schema selection is owned by the database module.
+         */
         public Builder schema(String val) {
-            this.schema = Objects.requireNonNull(
-                val,
-                "schema must not be null"
-            );
+            Objects.requireNonNull(val, "schema must not be null");
             return this;
         }
 
+        /**
+         * Kept for source compatibility. Table access is owned by the database module.
+         */
         public Builder salesTable(String val) {
-            this.salesTable = Objects.requireNonNull(
-                val,
-                "salesTable must not be null"
-            );
+            Objects.requireNonNull(val, "salesTable must not be null");
             return this;
         }
 
         @Override
         public DbDataSourceConnector build() {
-            Objects.requireNonNull(
-                jdbcUrl,
-                "jdbcUrl is required for DbDataSourceConnector"
-            );
             return new DbDataSourceConnector(this);
         }
     }

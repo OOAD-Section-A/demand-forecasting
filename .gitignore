@@ -21,3 +21,12 @@ target/
 # Other build folders
 # =========================
 out/
+
+# =========================
+# Local credentials / environment
+# =========================
+.env
+.env.*
+!.env.example
+scripts/db-env.ps1
+database.local.properties
