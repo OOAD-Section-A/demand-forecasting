@@ -56,6 +56,24 @@ public class ForecastPersistenceService {
         }
     }
 
+    public void deleteForecastResult(String forecastId) {
+        if (forecastId == null || forecastId.trim().isEmpty()) {
+            throw new IllegalArgumentException("forecastId must not be blank");
+        }
+
+        try {
+            adapter.deleteForecast(forecastId);
+            LOG.info("Forecast deleted successfully for forecastId=" + forecastId);
+        } catch (Exception ex) {
+            LOG.severe(
+                "Failed to delete forecast for forecastId=" +
+                    forecastId +
+                    " error=" + ex.getMessage()
+            );
+            throw new RuntimeException(ex);
+        }
+    }
+
     private void saveForecastPerformanceMetric(ForecastResult result, String forecastId) {
         ForecastPerformanceMetric metric = new ForecastPerformanceMetric(
             "EVAL-" + UUID.randomUUID(),

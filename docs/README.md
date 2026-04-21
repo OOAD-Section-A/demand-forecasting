@@ -36,27 +36,20 @@ Frontend (Swing)
 - Forecast persistence (summary + detailed)
 - Graph-ready data storage
 - Query layer exposed via JAR for frontend
+- Shared database module integration through `DemandForecastingAdapter`
 
 ---
 
-## Database Design
+## Database Integration
 
-### `forecast_timeseries` (NEW)
+The project uses the shared SCM database module JAR in `lib/`:
 
-```sql
-CREATE TABLE forecast_timeseries (
-    id VARCHAR(50) PRIMARY KEY,
-    forecast_id VARCHAR(50) NOT NULL,
-    time_index INT NOT NULL,
-    forecast_value DECIMAL(10,2) NOT NULL,
-    lower_bound DECIMAL(10,2),
-    upper_bound DECIMAL(10,2),
-    CONSTRAINT fk_forecast_timeseries_forecast
-        FOREIGN KEY (forecast_id)
-        REFERENCES demand_forecasts(forecast_id)
-        ON DELETE CASCADE
-);
-```
+- `database-module-1.0.0-SNAPSHOT-standalone.jar`
+- `scm-exception-handler-v3.jar`
+
+See `docs/database-module-integration.md` for the database team's integration rules.
+
+The database module bootstraps schema setup through `SupplyChainDatabaseFacade`, so subsystem users should not manually run `schema.sql` during normal integration.
 
 ---
 
@@ -92,9 +85,9 @@ target/demand-forecasting-1.0-SNAPSHOT.jar
 
 ## Notes
 
-- Requires MySQL driver
-- Uses JDBC (temporary)
+- Requires valid database module configuration through JVM properties, environment variables, or `database.properties`
 - Forecast retrieved by productId
+- Delete operations are available through `DemandForecastingDbAdapter` and `ForecastPersistenceService`
 
 ---
 
