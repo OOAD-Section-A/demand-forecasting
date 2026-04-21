@@ -73,6 +73,41 @@ class ForecastingIntegrationServiceTest {
         assertFalse(result.getForecastedDemand().stream().anyMatch(v -> v.signum() < 0));
     }
 
+    @Test
+    void volatileGrowthDemandTriggersLstmPath() {
+        ForecastingIntegrationService service = new ForecastingIntegrationService(
+            new NoopExceptionSource()
+        );
+
+        FeatureTimeSeries features = service.buildFeatures(
+            "P-LSTM",
+            "S001",
+            volatileSales("P-LSTM", "S001", 36),
+            List.of(),
+            List.of()
+        );
+
+        LifecycleContent lifecycle = new LifecycleContent(
+            "P-LSTM",
+            "GROWTH",
+            LocalDate.now().minusMonths(3)
+        );
+        lifecycle.setForecastHorizonMonths(6);
+
+        ForecastResult result = service.generateForecast(
+            "P-LSTM",
+            "S001",
+            features,
+            lifecycle
+        );
+
+        assertEquals("SUCCESS", result.getStatus());
+        assertEquals("GROWTH", result.getLifecycleStage());
+        assertEquals("PROPHET_LSTM:LSTM", result.getModelUsed());
+        assertEquals(6, result.getForecastedDemand().size());
+        assertFalse(result.getForecastedDemand().stream().anyMatch(v -> v.signum() < 0));
+    }
+
     private List<RawSalesData> sampleSales(String productId, String storeId, int months) {
         List<RawSalesData> rows = new ArrayList<>();
         LocalDate start = LocalDate.of(2023, 1, 1);
@@ -90,6 +125,30 @@ class ForecastingIntegrationServiceTest {
                     .quantitySold(quantity)
                     .unitPrice(new BigDecimal("10.00"))
                     .revenue(BigDecimal.valueOf(quantity).multiply(new BigDecimal("10.00")))
+                    .region("NORTH")
+                    .build()
+            );
+        }
+        return rows;
+    }
+
+    private List<RawSalesData> volatileSales(String productId, String storeId, int months) {
+        List<RawSalesData> rows = new ArrayList<>();
+        LocalDate start = LocalDate.of(2023, 1, 1);
+        for (int i = 0; i < months; i++) {
+            int spike = (i % 3 == 0) ? 260 : 35;
+            int promotionShock = (i % 10 == 5) ? 180 : 0;
+            int quantity = spike + promotionShock;
+
+            rows.add(
+                new RawSalesData.Builder()
+                    .saleId(1000 + i)
+                    .productId(productId)
+                    .storeId(storeId)
+                    .saleDate(start.plusMonths(i))
+                    .quantitySold(quantity)
+                    .unitPrice(new BigDecimal("12.00"))
+                    .revenue(BigDecimal.valueOf(quantity).multiply(new BigDecimal("12.00")))
                     .region("NORTH")
                     .build()
             );
