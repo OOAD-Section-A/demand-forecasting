@@ -11,15 +11,13 @@ import com.forecast.services.engine.ForecastProcessor;
 import com.forecast.services.engine.lifecycle.LifeCycleManager;
 import com.forecast.services.output.ForecastOutputService;
 import com.jackfruit.scm.database.facade.SupplyChainDatabaseFacade;
+import com.jackfruit.scm.database.model.DemandForecastingModels.SalesRecord;
 
 
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class TestForecastRunner {
@@ -29,71 +27,72 @@ public class TestForecastRunner {
         String productId = "P1001";
         String storeId = "S001";
 
-        FeatureTimeSeries features = loadFromDatabase(productId, storeId);
+        try (SupplyChainDatabaseFacade facade = new SupplyChainDatabaseFacade()) {
+            DemandForecastingDbAdapter dbAdapter =
+                    new DemandForecastingDbAdapter(facade);
 
-        LifeCycleManager lifeCycleManager = new LifeCycleManager();
+            FeatureTimeSeries features = loadFromDatabase(dbAdapter, productId, storeId);
 
-        MLAlgorithmicExceptionSource exceptionSource =
-                new MLAlgorithmicExceptionSource();
+            LifeCycleManager lifeCycleManager = new LifeCycleManager();
 
-        SupplyChainDatabaseFacade facade = new SupplyChainDatabaseFacade();
-        DemandForecastingDbAdapter dbAdapter =
-                new DemandForecastingDbAdapter(facade);
-        ForecastPersistenceService persistenceService =
-                new ForecastPersistenceService(dbAdapter);
+            MLAlgorithmicExceptionSource exceptionSource =
+                    new MLAlgorithmicExceptionSource();
 
-        ForecastOutputService outputService =
-                new ForecastOutputService(exceptionSource, persistenceService);
+            ForecastPersistenceService persistenceService =
+                    new ForecastPersistenceService(dbAdapter);
 
-        ForecastProcessor processor =
-                new ForecastProcessor(lifeCycleManager, outputService, exceptionSource);
+            ForecastOutputService outputService =
+                    new ForecastOutputService(exceptionSource, persistenceService);
 
-        ForecastController controller =
-                new ForecastController(processor);
+            ForecastProcessor processor =
+                    new ForecastProcessor(lifeCycleManager, outputService, exceptionSource);
 
-        LifecycleContent lifecycle = null;
+            ForecastController controller =
+                    new ForecastController(processor);
 
-        ForecastResult result = controller.generateForecast(
-                productId,
-                storeId,
-                features,
-                lifecycle
-        );
+            LifecycleContent lifecycle = null;
 
-        printResult(result);
+            ForecastResult result = controller.generateForecast(
+                    productId,
+                    storeId,
+                    features,
+                    lifecycle
+            );
+
+            printResult(result);
+        }
     }
 
-    private static FeatureTimeSeries loadFromDatabase(String productId, String storeId) throws Exception {
+    private static FeatureTimeSeries loadFromDatabase(
+            DemandForecastingDbAdapter dbAdapter,
+            String productId,
+            String storeId
+    ) {
+        List<SalesRecord> salesRecords = new ArrayList<>();
+        for (SalesRecord record : dbAdapter.listSalesRecords()) {
+            if (productId.equals(record.productId()) && storeId.equals(record.storeId())) {
+                salesRecords.add(record);
+            }
+        }
 
-        Connection conn = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/OOAD",
-                "root",
-                "anurag10"
-        );
+        if (salesRecords.isEmpty()) {
+            seedSampleSalesData(dbAdapter, productId, storeId);
+            for (SalesRecord record : dbAdapter.listSalesRecords()) {
+                if (productId.equals(record.productId()) && storeId.equals(record.storeId())) {
+                    salesRecords.add(record);
+                }
+            }
+        }
 
-        String query =
-                "SELECT sale_date, quantity_sold " +
-                "FROM sales_records " +
-                "WHERE product_id = ? AND store_id = ? " +
-                "ORDER BY sale_date";
-
-        PreparedStatement stmt = conn.prepareStatement(query);
-        stmt.setString(1, productId);
-        stmt.setString(2, storeId);
-
-        ResultSet rs = stmt.executeQuery();
+        salesRecords.sort(Comparator.comparing(SalesRecord::saleDate));
 
         List<LocalDate> dates = new ArrayList<>();
         List<BigDecimal> values = new ArrayList<>();
 
-        while (rs.next()) {
-            dates.add(rs.getDate("sale_date").toLocalDate());
-            values.add(BigDecimal.valueOf(rs.getInt("quantity_sold")));
+        for (SalesRecord record : salesRecords) {
+            dates.add(record.saleDate());
+            values.add(BigDecimal.valueOf(record.quantitySold()));
         }
-
-        rs.close();
-        stmt.close();
-        conn.close();
 
         if (dates.isEmpty()) {
             throw new RuntimeException(
@@ -107,6 +106,34 @@ public class TestForecastRunner {
         features.setNormalized(false);
 
         return features;
+    }
+
+    private static void seedSampleSalesData(
+            DemandForecastingDbAdapter dbAdapter,
+            String productId,
+            String storeId
+    ) {
+        LocalDate startDate = LocalDate.now().minusMonths(35).withDayOfMonth(1);
+        BigDecimal unitPrice = new BigDecimal("10.00");
+
+        for (int i = 0; i < 36; i++) {
+            int seasonalLift = (i % 12 == 10 || i % 12 == 11) ? 35 : 0;
+            int quantitySold = 100 + (i * 2) + seasonalLift;
+            BigDecimal revenue = unitPrice.multiply(BigDecimal.valueOf(quantitySold));
+
+            dbAdapter.createSalesRecord(
+                    new SalesRecord(
+                            "SALE-SEED-" + productId + "-" + storeId + "-" + (i + 1),
+                            productId,
+                            storeId,
+                            startDate.plusMonths(i),
+                            quantitySold,
+                            unitPrice,
+                            revenue,
+                            "NORTH"
+                    )
+            );
+        }
     }
 
     private static void printResult(ForecastResult result) {
