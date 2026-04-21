@@ -2,8 +2,8 @@
 # This file is ignored by git.
 
 $env:DB_URL = "jdbc:mysql://db:3306/OOAD"
-$env:DB_USERNAME = "root"
-$env:DB_PASSWORD = "anurag10"
+$env:DB_USERNAME = "your_username"
+$env:DB_PASSWORD = "your_pass"
 $env:DB_POOL_SIZE = "5"
 
 $targetClasses = Join-Path $PSScriptRoot "..\target\classes"
